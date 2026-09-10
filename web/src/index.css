@@ -1,0 +1,10 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 1rem;
+}
+
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+}

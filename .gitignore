@@ -1,0 +1,21 @@
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Go build output
+/bin/
+*.test
+coverage.out
+
+# SQLite data
+/data/*.db
+/data/*.db-*
+
+# Frontend dependencies/build
+web/node_modules/
+web/dist/
+
+# OS/editor noise
+.DS_Store
+.idea/workspace.xml

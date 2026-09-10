@@ -1,0 +1,23 @@
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Version control, editor, and OS files
+.git/
+.idea/
+*.swp
+.DS_Store
+
+# Go build and test output
+/bin/
+*.test
+coverage.out
+
+# SQLite data and import artifacts
+/data/
+!data/imports/.gitkeep
+
+# Frontend dependencies and build output
+web/node_modules/
+web/dist/
