@@ -14,8 +14,10 @@ import (
 	"awesomeProject5/internal/api"
 	"awesomeProject5/internal/config"
 	"awesomeProject5/internal/database"
+	"awesomeProject5/internal/domain"
 	"awesomeProject5/internal/importer"
 	"awesomeProject5/internal/repository"
+	"awesomeProject5/internal/scheduler"
 )
 
 func main() {
@@ -51,10 +53,25 @@ func main() {
 		}
 	}()
 
+	// Start scheduled import if configured.
+	var sched *scheduler.Scheduler
+	if cfg.ImportCron != "" && cfg.ImportFile != "" {
+		sched = scheduler.New(cfg.ImportCron, cfg.ImportFile, func(ctx context.Context, fileName string, data []byte) (*domain.ImportReport, error) {
+			return imp.Import(ctx, "scheduled", fileName, data)
+		})
+		sched.Start(context.Background())
+	} else {
+		log.Println("scheduler: not configured (IMPORT_CRON or IMPORT_FILE missing)")
+	}
+
 	// Graceful shutdown.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+
+	if sched != nil {
+		sched.Stop()
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

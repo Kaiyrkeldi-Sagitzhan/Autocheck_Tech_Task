@@ -37,7 +37,7 @@ func TestImport_NewCars(t *testing.T) {
 		"Y1YJ2345678901234;BMW;X5;2019;30000;12000000;KZT;Черный;3.0 дизель 245 л.с.;AT;SUV;;sold;2024-06-20",
 	}, "\r\n")
 
-	report, err := imp.Import(ctx, "test.csv", []byte(csvData))
+	report, err := imp.Import(ctx, "manual", "test.csv", []byte(csvData))
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestImport_UpdateExistingVIN(t *testing.T) {
 	csv1 := "VIN;Brand;Model;Year;MileageKm;Price;Currency;Color;Engine;Transmission;BodyType;DefectsRaw;Status;UpdatedAt\r\n" +
 		"X5XJ1234567890123;Toyota;Camry;2020;50000;5000000;KZT;Белый;2.0 бензин 150 л.с.;AT;Седан;;active;2024-01-15\r\n"
 
-	report1, err := imp.Import(ctx, "test1.csv", []byte(csv1))
+	report1, err := imp.Import(ctx, "manual", "test1.csv", []byte(csv1))
 	if err != nil {
 		t.Fatalf("first Import: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestImport_UpdateExistingVIN(t *testing.T) {
 	csv2 := "VIN;Brand;Model;Year;MileageKm;Price;Currency;Color;Engine;Transmission;BodyType;DefectsRaw;Status;UpdatedAt\r\n" +
 		"X5XJ1234567890123;Toyota;Camry;2021;60000;5500000;KZT;Красный;2.0 бензин 150 л.с.;AT;Седан;Царапина на бампере;sold;2024-12-01\r\n"
 
-	report2, err := imp.Import(ctx, "test2.csv", []byte(csv2))
+	report2, err := imp.Import(ctx, "manual", "test2.csv", []byte(csv2))
 	if err != nil {
 		t.Fatalf("second Import: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestImport_SameVINTwice_NoDuplicate(t *testing.T) {
 		"X5XJ1234567890123;Toyota;Camry;2021;60000;5500000;KZT;Красный;2.0 бензин 150 л.с.;AT;Седан;;sold;2024-12-01",
 	}, "\r\n")
 
-	report, err := imp.Import(ctx, "test.csv", []byte(csv))
+	report, err := imp.Import(ctx, "manual", "test.csv", []byte(csv))
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestImport_WithInvalidRows(t *testing.T) {
 		"Y1YJ2345678901234;Toyota;Corolla;2021;15000;4000000;KZT;Красный;1.6 бензин 110 л.с.;MT;Хэтчбек;;active;2024-03-10",
 	}, "\r\n")
 
-	report, err := imp.Import(ctx, "test.csv", []byte(csvData))
+	report, err := imp.Import(ctx, "manual", "test.csv", []byte(csvData))
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -187,7 +187,7 @@ func TestImport_EmptyFile(t *testing.T) {
 	imp, _ := setupImporter(t)
 	ctx := context.Background()
 
-	report, err := imp.Import(ctx, "empty.csv", []byte(""))
+	report, err := imp.Import(ctx, "manual", "empty.csv", []byte(""))
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestImport_DefectsNormalization(t *testing.T) {
 	csvData := "VIN;Brand;Model;Year;MileageKm;Price;Currency;Color;Engine;Transmission;BodyType;DefectsRaw;Status;UpdatedAt\r\n" +
 		"X5XJ1234567890123;Toyota;Camry;2020;50000;5000000;KZT;Белый;2.0 бензин 150 л.с.;AT;Седан;Стук в подвеске, Требуется замена масла;active;2024-01-15\r\n"
 
-	_, err := imp.Import(ctx, "test.csv", []byte(csvData))
+	_, err := imp.Import(ctx, "manual", "test.csv", []byte(csvData))
 	if err != nil {
 		t.Fatalf("Import: %v", err)
 	}

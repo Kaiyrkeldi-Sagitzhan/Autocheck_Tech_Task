@@ -8,6 +8,8 @@ services:
       - DB_PATH=/app/data/autocheck.db
       - IMPORT_DIR=/app/data/imports
       - IMPORT_INTERVAL=300s
+      - IMPORT_CRON=*/5 * * * *
+      - IMPORT_FILE=/app/data/imports/cars.csv
     volumes:
       - app-data:/app/data
 

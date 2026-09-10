@@ -13,14 +13,18 @@ type Config struct {
 	DBPath         string        // DB_PATH, default "data/autocheck.db"
 	ImportDir      string        // IMPORT_DIR, default "data/imports"
 	ImportInterval time.Duration // IMPORT_INTERVAL, default 5m
+	ImportCron     string        // IMPORT_CRON, default empty (scheduler disabled)
+	ImportFile     string        // IMPORT_FILE, default empty
 }
 
 // Load reads configuration from the environment, applying defaults.
 func Load() (*Config, error) {
 	cfg := &Config{
-		HTTPPort:  envOr("HTTP_PORT", "8080"),
-		DBPath:    envOr("DB_PATH", "data/autocheck.db"),
-		ImportDir: envOr("IMPORT_DIR", "data/imports"),
+		HTTPPort:   envOr("HTTP_PORT", "8080"),
+		DBPath:     envOr("DB_PATH", "data/autocheck.db"),
+		ImportDir:  envOr("IMPORT_DIR", "data/imports"),
+		ImportCron: envOr("IMPORT_CRON", ""),
+		ImportFile: envOr("IMPORT_FILE", ""),
 	}
 
 	interval := envOr("IMPORT_INTERVAL", "5m")

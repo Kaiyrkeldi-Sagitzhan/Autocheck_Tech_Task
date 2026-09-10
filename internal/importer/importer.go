@@ -23,7 +23,7 @@ func New(repo *repository.Repository) *Importer {
 
 // Import processes a 1C export file: parse, validate, upsert, and report.
 // It never crashes the whole import because of one malformed row.
-func (i *Importer) Import(ctx context.Context, fileName string, data []byte) (*domain.ImportReport, error) {
+func (i *Importer) Import(ctx context.Context, triggerType, fileName string, data []byte) (*domain.ImportReport, error) {
 	// Parse CSV.
 	records, parseErrors, err := parser.Parse(data)
 	if err != nil {
@@ -32,7 +32,7 @@ func (i *Importer) Import(ctx context.Context, fileName string, data []byte) (*d
 
 	// Create import run.
 	run := &domain.ImportRun{
-		TriggerType: "manual",
+		TriggerType: triggerType,
 		FileName:    fileName,
 		Status:      "running",
 		RowsTotal:   len(records) + len(parseErrors),

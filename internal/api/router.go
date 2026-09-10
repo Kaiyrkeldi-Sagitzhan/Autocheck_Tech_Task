@@ -90,7 +90,7 @@ func handleImport(imp *importer.Importer) http.HandlerFunc {
 			return
 		}
 
-		report, err := imp.Import(r.Context(), header.Filename, buf)
+		report, err := imp.Import(r.Context(), "manual", header.Filename, buf)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "import failed: " + err.Error()})
 			return
