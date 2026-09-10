@@ -17,7 +17,7 @@ func NewRouter(repo *repository.Repository, imp *importer.Importer) http.Handler
 
 	mux.HandleFunc("GET /api/health", handleHealth)
 	mux.HandleFunc("GET /api/cars", handleListCars(repo))
-	mux.HandleFunc("GET /api/cars/", handleGetCarByVIN(repo))
+	mux.HandleFunc("GET /api/cars/{vin}", handleGetCarByVIN(repo))
 	mux.HandleFunc("POST /api/import", handleImport(imp))
 
 	// Wrap with CORS and JSON content-type middleware.
@@ -108,7 +108,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func jsonMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/health" {
+		// Skip JSON content-type check for health and import endpoints
+		if r.URL.Path == "/api/health" || r.URL.Path == "/api/import" {
 			next.ServeHTTP(w, r)
 			return
 		}

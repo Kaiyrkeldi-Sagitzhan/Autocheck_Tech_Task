@@ -277,3 +277,78 @@ Implement the 1C-like automobile export dataset and parser:
 - ✅ All tests pass
 - ✅ Code formatted with gofmt
 - ✅ Documentation written to AI_RESPONSES/003_parser_dataset.md
+
+---
+
+## Task 006 — REST API Layer Implementation
+
+**Date:** 2026-09-10 (Asia/Almaty)
+**Mode:** 💻 Code
+**Basis:** [AI_RESPONSES/001_architecture.md](../001_architecture.md), [AI_RESPONSES/004_import_service.md](../004_import_service.md)
+**Output:** [AI_RESPONSES/005_api_layer.md](../005_api_layer.md)
+
+### Request
+Implement the REST API layer for the Autocheck.kz car inventory import microservice:
+1. Add `ListCars` to repository with pagination
+2. Add JSON tags to `domain.Car`
+3. Implement API handlers (health, list cars, get by VIN, import)
+4. Add CORS middleware
+5. Wire dependencies in `main.go`
+6. Add unit tests for the API layer
+7. Run gofmt and go test ./...
+8. Build Docker image and verify
+
+### Actions Taken
+1. **Updated domain model** — Added JSON struct tags to `Car` in [internal/domain/car.go](internal/domain/car.go) for HTTP serialization.
+
+2. **Extended repository** — [internal/repository/repository.go](internal/repository/repository.go):
+   - `ListCars(ctx, page, limit) ([]Car, int, error)` — paginated listing with total count
+   - `CarByVIN(ctx, vin) (*Car, error)` — single car lookup by VIN
+
+3. **Implemented API handlers** — [internal/api/router.go](internal/api/router.go):
+   - `GET /api/health` — health check
+   - `GET /api/cars` — paginated car listing (`?page=1&limit=20`, max 100)
+   - `GET /api/cars/{vin}` — single car by VIN (404 if not found)
+   - `POST /api/import` — multipart CSV file import
+   - Dependency injection via constructor: `NewRouter(repo, imp) http.Handler`
+   - CORS middleware allowing all origins
+   - JSON content-type middleware (exempts `/api/health` and `/api/import`)
+
+4. **Wired dependencies** — [cmd/server/main.go](cmd/server/main.go):
+   - Creates `repository.New(db)` and `importer.New(repo)`
+   - Passes both to `api.NewRouter(repo, imp)`
+
+5. **Created API tests** — [internal/api/router_test.go](internal/api/router_test.go):
+   - `TestHealth` — health endpoint returns 200
+   - `TestListCars` — pagination parameters work correctly
+   - `TestGetCarByVIN` — 404 for non-existent VIN
+   - `TestImportFile` — successful CSV import
+   - `TestImportInvalidUpload` — 400 for missing file field
+
+6. **Fixed test compilation issues**:
+   - Changed `*Repository` to `*repository.Repository` in test imports
+   - Removed unused `context` import
+   - Fixed `body.Write(csvData)` to `body.Write([]byte(csvData))`
+   - Changed route pattern from `"GET /api/cars/"` to `"GET /api/cars/{vin}"` for proper `PathValue` extraction
+
+### Validation Performed
+- `gofmt -l internal/ cmd/` — clean (no output)
+- `go test ./...` — all tests pass:
+  - `ok awesomeProject5/internal/api 0.008s`
+  - `ok awesomeProject5/internal/importer 0.009s`
+  - `ok awesomeProject5/internal/parser 0.005s`
+  - `ok awesomeProject5/internal/repository 0.006s`
+- `docker compose down -v && docker compose build --no-cache && docker compose up -d` — container starts successfully
+- Live API verification via curl:
+  - `GET /api/health` → `{"status":"ok"}`
+  - `GET /api/cars?page=1&limit=5` → paginated list with 994 total cars
+  - `GET /api/cars/NONEXISTENT` → `{"error":"car not found"}`
+  - `POST /api/import` with `partner_1c_export.csv` → 994 created, 6 errors reported
+
+### Status
+- ✅ REST API layer implemented and tested
+- ✅ All 24 tests pass across 4 packages
+- ✅ Code formatted with gofmt
+- ✅ Docker image builds and container starts
+- ✅ Live API endpoints verified
+- ✅ Documentation written to AI_RESPONSES/005_api_layer.md
