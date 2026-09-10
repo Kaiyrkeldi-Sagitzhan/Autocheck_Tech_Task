@@ -3,6 +3,7 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -19,6 +20,7 @@ func NewRouter(repo *repository.Repository, imp *importer.Importer) http.Handler
 	mux.HandleFunc("GET /api/cars", handleListCars(repo))
 	mux.HandleFunc("GET /api/cars/{vin}", handleGetCarByVIN(repo))
 	mux.HandleFunc("POST /api/import", handleImport(imp))
+	mux.HandleFunc("GET /api/import/status", handleImportStatus(repo))
 
 	// Wrap with CORS and JSON content-type middleware.
 	return corsMiddleware(jsonMiddleware(mux))
@@ -85,18 +87,56 @@ func handleImport(imp *importer.Importer) http.HandlerFunc {
 		defer file.Close()
 
 		buf := make([]byte, header.Size)
-		if _, err := file.Read(buf); err != nil {
+		if _, err := io.ReadFull(file, buf); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "failed to read file"})
 			return
 		}
 
-		report, err := imp.Import(r.Context(), "manual", header.Filename, buf)
+		report, err := imp.Import(r.Context(), importer.ImportRequest{
+			TriggerType: "manual",
+			TriggeredBy: "api",
+			FileName:    header.Filename,
+			Data:        buf,
+		})
 		if err != nil {
+			// ImportInProgressError is a client conflict, not a server error.
+			if _, ok := err.(*importer.ImportInProgressError); ok {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+				return
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "import failed: " + err.Error()})
 			return
 		}
 
 		writeJSON(w, http.StatusOK, report)
+	}
+}
+
+func handleImportStatus(repo *repository.Repository) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		run, err := repo.LastImportRun(r.Context())
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+			return
+		}
+		if run == nil {
+			writeJSON(w, http.StatusOK, map[string]any{"last_import": nil})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"last_import": map[string]any{
+				"id":            run.ID,
+				"file_name":     run.FileName,
+				"status":        run.Status,
+				"rows_total":    run.RowsTotal,
+				"created":       run.Created,
+				"updated":       run.Updated,
+				"skipped":       run.Skipped,
+				"error_message": run.ErrorMessage,
+				"started_at":    run.StartedAt,
+				"finished_at":   run.FinishedAt,
+			},
+		})
 	}
 }
 

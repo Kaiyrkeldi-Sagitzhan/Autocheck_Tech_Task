@@ -56,9 +56,13 @@ func main() {
 	// Start scheduled import if configured.
 	var sched *scheduler.Scheduler
 	if cfg.ImportCron != "" && cfg.ImportFile != "" {
-		sched = scheduler.New(cfg.ImportCron, cfg.ImportFile, func(ctx context.Context, fileName string, data []byte) (*domain.ImportReport, error) {
-			return imp.Import(ctx, "scheduled", fileName, data)
-		})
+		var err error
+		sched, err = scheduler.New(cfg.ImportCron, cfg.ImportFile, func(ctx context.Context, req importer.ImportRequest) (*domain.ImportReport, error) {
+			return imp.Import(ctx, req)
+		}, scheduler.WithEnabled(cfg.ImportEnabled), scheduler.WithTimeout(cfg.ImportTimeout), scheduler.WithRepo(repo))
+		if err != nil {
+			log.Fatalf("scheduler: %v", err)
+		}
 		sched.Start(context.Background())
 	} else {
 		log.Println("scheduler: not configured (IMPORT_CRON or IMPORT_FILE missing)")

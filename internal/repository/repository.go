@@ -6,36 +6,51 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"awesomeProject5/internal/domain"
 )
 
+// dbHandle is an interface that both *sql.DB and *sql.Tx implement,
+// allowing the Repository to work with transactions.
+type dbHandle interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
 // Repository provides persistence methods for cars and import runs.
 type Repository struct {
-	db *sql.DB
+	db    dbHandle
+	rawDB *sql.DB // kept for BeginTx
 }
 
 // New creates a Repository backed by the given database handle.
 func New(db *sql.DB) *Repository {
-	return &Repository{db: db}
+	return &Repository{db: db, rawDB: db}
+}
+
+// BeginTx starts a new database transaction.
+func (r *Repository) BeginTx(ctx context.Context) (*sql.Tx, error) {
+	return r.rawDB.BeginTx(ctx, nil)
+}
+
+// WithTx returns a new Repository that uses the given transaction.
+// This allows all repository methods to participate in the same transaction.
+func (r *Repository) WithTx(tx *sql.Tx) *Repository {
+	return &Repository{db: tx, rawDB: r.rawDB}
 }
 
 // UpsertCar inserts a new car or updates an existing one by VIN.
-// Returns (true, nil) if a new row was inserted, (false, nil) if an existing row was updated.
-func (r *Repository) UpsertCar(ctx context.Context, car *domain.Car) (bool, error) {
-	// Check if VIN already exists to determine insert vs update.
-	var exists bool
-	err := r.db.QueryRowContext(ctx,
-		"SELECT EXISTS(SELECT 1 FROM cars WHERE vin = ?)", car.VIN,
-	).Scan(&exists)
-	if err != nil {
-		return false, err
-	}
-
+// Returns (created, changed, err):
+//   - created=true  → new row inserted
+//   - created=false, changed=true  → existing row updated with new values
+//   - created=false, changed=false → existing row matched but no values changed
+func (r *Repository) UpsertCar(ctx context.Context, car *domain.Car) (bool, bool, error) {
 	defectsJSON, err := json.Marshal(car.Defects)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 
 	now := time.Now().UTC()
@@ -44,19 +59,40 @@ func (r *Repository) UpsertCar(ctx context.Context, car *domain.Car) (bool, erro
 	}
 	car.UpdatedAt = now
 
-	if !exists {
-		_, err = r.db.ExecContext(ctx,
-			`INSERT INTO cars (vin, brand, model, year, mileage_km, price, currency, color,
-				engine, transmission, body_type, defects, defects_raw, status, source_file, imported_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			car.VIN, car.Brand, car.Model, car.Year, car.MileageKm, car.Price, car.Currency, car.Color,
-			car.Engine, car.Transmission, car.BodyType, string(defectsJSON), car.DefectsRaw, car.Status,
-			car.SourceFile, car.ImportedAt, car.UpdatedAt,
-		)
-		return true, err
+	// Try INSERT first. If the VIN already exists, SQLite returns a constraint
+	// violation, and we fall back to UPDATE. This avoids the TOCTOU race
+	// condition between SELECT and INSERT.
+	_, err = r.db.ExecContext(ctx,
+		`INSERT INTO cars (vin, brand, model, year, mileage_km, price, currency, color,
+			engine, transmission, body_type, defects, defects_raw, status, source_file, imported_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		car.VIN, car.Brand, car.Model, car.Year, car.MileageKm, car.Price, car.Currency, car.Color,
+		car.Engine, car.Transmission, car.BodyType, string(defectsJSON), car.DefectsRaw, car.Status,
+		car.SourceFile, car.ImportedAt, car.UpdatedAt,
+	)
+	if err == nil {
+		// New row inserted.
+		return true, true, nil
 	}
 
-	// Update existing car.
+	// Check if the error is a UNIQUE constraint violation.
+	// SQLite error code for constraint violation is 19 (SQLITE_CONSTRAINT).
+	if !isConstraintError(err) {
+		return false, false, err
+	}
+
+	// VIN already exists — fetch existing car to detect unchanged rows.
+	existing, err := r.CarByVIN(ctx, car.VIN)
+	if err != nil {
+		return false, false, err
+	}
+
+	// Compare all business fields. If identical, skip the update.
+	changed := !carsEqual(existing, car)
+	if !changed {
+		return false, false, nil
+	}
+
 	_, err = r.db.ExecContext(ctx,
 		`UPDATE cars SET brand = ?, model = ?, year = ?, mileage_km = ?, price = ?, currency = ?,
 			color = ?, engine = ?, transmission = ?, body_type = ?, defects = ?, defects_raw = ?,
@@ -66,15 +102,74 @@ func (r *Repository) UpsertCar(ctx context.Context, car *domain.Car) (bool, erro
 		car.Engine, car.Transmission, car.BodyType, string(defectsJSON), car.DefectsRaw, car.Status,
 		car.SourceFile, car.UpdatedAt, car.VIN,
 	)
-	return false, err
+	return false, true, err
+}
+
+// isConstraintError checks if the error is a SQLite constraint violation.
+func isConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// SQLite constraint violation has error code 19.
+	// The modernc.org/sqlite driver returns errors with specific types.
+	// We check the error string as a fallback.
+	return strings.Contains(err.Error(), "UNIQUE constraint") ||
+		strings.Contains(err.Error(), "constraint")
+}
+
+// carsEqual returns true if two cars have identical business data (excluding
+// ID, ImportedAt, and UpdatedAt which are managed by the system).
+func carsEqual(a, b *domain.Car) bool {
+	if a.VIN != b.VIN ||
+		a.Brand != b.Brand ||
+		a.Model != b.Model ||
+		a.Currency != b.Currency ||
+		a.Color != b.Color ||
+		a.Engine != b.Engine ||
+		a.Transmission != b.Transmission ||
+		a.BodyType != b.BodyType ||
+		a.DefectsRaw != b.DefectsRaw ||
+		a.Status != b.Status {
+		return false
+	}
+	// Use helper for *int comparison.
+	if !ptrIntEqual(a.Year, b.Year) {
+		return false
+	}
+	if !ptrIntEqual(a.MileageKm, b.MileageKm) {
+		return false
+	}
+	if !ptrIntEqual(a.Price, b.Price) {
+		return false
+	}
+	// Compare defects slices.
+	if len(a.Defects) != len(b.Defects) {
+		return false
+	}
+	for i := range a.Defects {
+		if a.Defects[i] != b.Defects[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func ptrIntEqual(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }
 
 // CreateImportRun creates a new import run record.
 func (r *Repository) CreateImportRun(ctx context.Context, run *domain.ImportRun) error {
 	result, err := r.db.ExecContext(ctx,
-		`INSERT INTO import_runs (trigger_type, file_name, status, rows_total, started_at)
-		 VALUES (?, ?, ?, ?, ?)`,
-		run.TriggerType, run.FileName, run.Status, run.RowsTotal, run.StartedAt,
+		`INSERT INTO import_runs (trigger_type, triggered_by, file_name, status, rows_total, started_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		run.TriggerType, run.TriggeredBy, run.FileName, run.Status, run.RowsTotal, run.StartedAt,
 	)
 	if err != nil {
 		return err
@@ -205,4 +300,43 @@ func (r *Repository) CarByVIN(ctx context.Context, vin string) (*domain.Car, err
 	}
 
 	return &car, nil
+}
+
+// CountCars returns the total number of cars in the database.
+func (r *Repository) CountCars(ctx context.Context) (int, error) {
+	var total int
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM cars").Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// LastImportRun returns the most recent import run, or nil if none exist.
+func (r *Repository) LastImportRun(ctx context.Context) (*domain.ImportRun, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT id, trigger_type, triggered_by, file_name, status, rows_total, created, updated, skipped,
+			error_message, started_at, finished_at
+		 FROM import_runs ORDER BY id DESC LIMIT 1`,
+	)
+
+	var run domain.ImportRun
+	var finishedAt sql.NullString
+	err := row.Scan(
+		&run.ID, &run.TriggerType, &run.TriggeredBy, &run.FileName, &run.Status,
+		&run.RowsTotal, &run.Created, &run.Updated, &run.Skipped, &run.ErrorMessage,
+		&run.StartedAt, &finishedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if finishedAt.Valid {
+		t, err := time.Parse(time.RFC3339, finishedAt.String)
+		if err == nil {
+			run.FinishedAt = &t
+		}
+	}
+	return &run, nil
 }

@@ -46,12 +46,15 @@ func TestUpsertCar_InsertNew(t *testing.T) {
 		SourceFile:   "test.csv",
 	}
 
-	created, err := repo.UpsertCar(ctx, car)
+	created, changed, err := repo.UpsertCar(ctx, car)
 	if err != nil {
 		t.Fatalf("UpsertCar: %v", err)
 	}
 	if !created {
 		t.Error("expected created=true for new VIN")
+	}
+	if !changed {
+		t.Error("expected changed=true for new insert")
 	}
 
 	// Verify car exists.
@@ -104,12 +107,15 @@ func TestUpsertCar_UpdateExisting(t *testing.T) {
 		Status:       domain.CarStatusActive,
 		SourceFile:   "test.csv",
 	}
-	created, err := repo.UpsertCar(ctx, car)
+	created, changed, err := repo.UpsertCar(ctx, car)
 	if err != nil {
 		t.Fatalf("first UpsertCar: %v", err)
 	}
 	if !created {
 		t.Error("expected created=true for first insert")
+	}
+	if !changed {
+		t.Error("expected changed=true for first insert")
 	}
 
 	// Update the same car.
@@ -118,12 +124,15 @@ func TestUpsertCar_UpdateExisting(t *testing.T) {
 	car.DefectsRaw = "Царапина на бампере"
 	car.Defects = []string{"Царапина на бампере"}
 
-	created, err = repo.UpsertCar(ctx, car)
+	created, changed, err = repo.UpsertCar(ctx, car)
 	if err != nil {
 		t.Fatalf("second UpsertCar: %v", err)
 	}
 	if created {
 		t.Error("expected created=false for update")
+	}
+	if !changed {
+		t.Error("expected changed=true for update with new values")
 	}
 
 	// Verify updates.
@@ -164,9 +173,12 @@ func TestUpsertCar_SameVINTwice_NoDuplicate(t *testing.T) {
 		SourceFile:   "test1.csv",
 	}
 
-	_, err := repo.UpsertCar(ctx, car1)
+	created, changed, err := repo.UpsertCar(ctx, car1)
 	if err != nil {
 		t.Fatalf("first UpsertCar: %v", err)
+	}
+	if !created || !changed {
+		t.Error("expected created=true, changed=true for first insert")
 	}
 
 	car2 := &domain.Car{
@@ -187,9 +199,15 @@ func TestUpsertCar_SameVINTwice_NoDuplicate(t *testing.T) {
 		SourceFile:   "test2.csv",
 	}
 
-	_, err = repo.UpsertCar(ctx, car2)
+	created, changed, err = repo.UpsertCar(ctx, car2)
 	if err != nil {
 		t.Fatalf("second UpsertCar: %v", err)
+	}
+	if created {
+		t.Error("expected created=false for second upsert of same VIN")
+	}
+	if !changed {
+		t.Error("expected changed=true for second upsert with different values")
 	}
 
 	// Verify only one car exists.
@@ -233,9 +251,12 @@ func TestUpsertCar_UpdateMileagePriceDefects(t *testing.T) {
 		SourceFile:   "test.csv",
 	}
 
-	_, err := repo.UpsertCar(ctx, car)
+	created, changed, err := repo.UpsertCar(ctx, car)
 	if err != nil {
 		t.Fatalf("first UpsertCar: %v", err)
+	}
+	if !created || !changed {
+		t.Error("expected created=true, changed=true for first insert")
 	}
 
 	// Update mileage, price, and defects.
@@ -244,9 +265,15 @@ func TestUpsertCar_UpdateMileagePriceDefects(t *testing.T) {
 	car.DefectsRaw = "Стук в подвеске, Требуется замена масла"
 	car.Defects = []string{"Стук в подвеске", "Требуется замена масла"}
 
-	_, err = repo.UpsertCar(ctx, car)
+	created, changed, err = repo.UpsertCar(ctx, car)
 	if err != nil {
 		t.Fatalf("second UpsertCar: %v", err)
+	}
+	if created {
+		t.Error("expected created=false for update")
+	}
+	if !changed {
+		t.Error("expected changed=true for update with new values")
 	}
 
 	fetched, err := repo.CarByVIN(ctx, car.VIN)

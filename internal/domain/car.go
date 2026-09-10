@@ -57,6 +57,7 @@ type CarRecord struct {
 type ImportRun struct {
 	ID           int64
 	TriggerType  string // "scheduled" | "manual"
+	TriggeredBy  string // e.g. "cron", "api"
 	FileName     string
 	Status       string // "running" | "success" | "failed"
 	RowsTotal    int

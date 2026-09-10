@@ -27,6 +27,7 @@ CREATE INDEX IF NOT EXISTS idx_cars_status      ON cars(status);
 CREATE TABLE IF NOT EXISTS import_runs (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     trigger_type  TEXT NOT NULL,                 -- 'scheduled' | 'manual'
+    triggered_by  TEXT NOT NULL DEFAULT '',      -- e.g. 'cron', 'api'
     file_name     TEXT NOT NULL DEFAULT '',
     status        TEXT NOT NULL,                 -- 'running' | 'success' | 'failed'
     rows_total    INTEGER NOT NULL DEFAULT 0,

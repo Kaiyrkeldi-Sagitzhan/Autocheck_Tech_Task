@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"awesomeProject5/internal/domain"
 )
@@ -17,7 +18,13 @@ import (
 // records plus per-row errors. It never crashes the whole import because of
 // one malformed row.
 func Parse(data []byte) ([]domain.CarRecord, []domain.RowErrorInfo, error) {
-	reader := csv.NewReader(strings.NewReader(string(data)))
+	// Strip UTF-8 BOM if present (common in Excel exports).
+	text := string(data)
+	if len(text) >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF {
+		text = text[3:]
+	}
+
+	reader := csv.NewReader(strings.NewReader(text))
 	reader.Comma = ';'
 	reader.TrimLeadingSpace = true
 	reader.LazyQuotes = true
@@ -96,7 +103,8 @@ func parseInt(s string) *int {
 	return &v
 }
 
-// validateVIN checks that VIN is exactly 17 chars and contains no I, O, Q.
+// validateVIN checks that VIN is exactly 17 chars, contains only alphanumeric
+// characters, and has no I, O, Q.
 func validateVIN(vin string) error {
 	vin = strings.ToUpper(strings.TrimSpace(vin))
 	if len(vin) != 17 {
@@ -105,6 +113,9 @@ func validateVIN(vin string) error {
 	for _, c := range vin {
 		if c == 'I' || c == 'O' || c == 'Q' {
 			return fmt.Errorf("invalid VIN character: %c (I, O, Q not allowed)", c)
+		}
+		if !unicode.IsLetter(c) && !unicode.IsDigit(c) {
+			return fmt.Errorf("invalid VIN character: %c (only A-Z, 0-9 allowed)", c)
 		}
 	}
 	return nil
