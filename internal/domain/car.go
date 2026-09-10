@@ -14,24 +14,24 @@ const (
 
 // Car is a normalized inventory record, uniquely identified by VIN.
 type Car struct {
-	ID           int64
-	VIN          string
-	Brand        string
-	Model        string
-	Year         *int
-	MileageKm    *int
-	Price        *int
-	Currency     string
-	Color        string
-	Engine       string
-	Transmission string
-	BodyType     string
-	Defects      []string // normalized defect codes/strings
-	DefectsRaw   string   // original defect field from the 1C export
-	Status       CarStatus
-	SourceFile   string
-	ImportedAt   time.Time
-	UpdatedAt    time.Time
+	ID           int64     `json:"id"`
+	VIN          string    `json:"vin"`
+	Brand        string    `json:"brand"`
+	Model        string    `json:"model"`
+	Year         *int      `json:"year,omitempty"`
+	MileageKm    *int      `json:"mileage_km,omitempty"`
+	Price        *int      `json:"price,omitempty"`
+	Currency     string    `json:"currency"`
+	Color        string    `json:"color,omitempty"`
+	Engine       string    `json:"engine,omitempty"`
+	Transmission string    `json:"transmission,omitempty"`
+	BodyType     string    `json:"body_type,omitempty"`
+	Defects      []string  `json:"defects,omitempty"`
+	DefectsRaw   string    `json:"defects_raw,omitempty"`
+	Status       CarStatus `json:"status"`
+	SourceFile   string    `json:"source_file,omitempty"`
+	ImportedAt   time.Time `json:"imported_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // CarRecord is a single parsed row from a 1C export file, before persistence.
@@ -48,6 +48,8 @@ type CarRecord struct {
 	Transmission string
 	BodyType     string
 	DefectsRaw   string
+	Status       CarStatus
+	UpdatedAt    string
 	RowNumber    int
 }
 

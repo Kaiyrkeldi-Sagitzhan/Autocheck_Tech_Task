@@ -151,3 +151,129 @@ Verify the final project structure matches the approved architecture and ensure 
 - ✅ Project structure is minimal and ready for business logic implementation
 
 The initial project structure has been successfully created based on the approved architecture. All components are in place with proper scaffolding, and the project is ready for subsequent implementation phases.
+
+---
+
+## Task 005 — Import Service and VIN-Based Upsert
+
+**Date:** 2026-09-10 (Asia/Almaty)
+**Mode:** 💻 Code
+**Basis:** [AI_RESPONSES/001_architecture.md](../001_architecture.md), [AI_RESPONSES/002_project_structure.md](../002_project_structure.md), [AI_RESPONSES/003_parser_dataset.md](../003_parser_dataset.md)
+**Output:** [AI_RESPONSES/004_import_service.md](../004_import_service.md)
+
+### Request
+Implement the import service and VIN-based upsert:
+1. Connect CSV parser → validation → repository → SQLite
+2. Implement VIN-based upsert (new VIN creates, existing VIN updates, no duplicates)
+3. Return import statistics (total, inserted, updated, skipped, errors)
+4. Keep import service independent from HTTP handlers
+5. Use database transactions appropriately
+6. Handle parser validation errors without aborting
+7. Add tests for insert, update, duplicate prevention, and field updates
+
+### Actions Taken
+1. **Implemented repository methods** in [internal/repository/repository.go](internal/repository/repository.go):
+   - `UpsertCar` — checks VIN existence, INSERTs new cars, UPDATEs existing ones, returns `(created bool, err error)`
+   - `CreateImportRun` — creates import run record
+   - `RecordImportError` — logs row-level failures
+   - `FinishImportRun` — updates run with final status and counts
+   - `CarByVIN` — retrieves car by VIN for test verification
+
+2. **Implemented importer service** in [internal/importer/importer.go](internal/importer/importer.go):
+   - `Import` method orchestrates: parse → create run → record errors → upsert valid records → finish run → return report
+   - `normalizeCarRecord` converts parser `CarRecord` to domain `Car`
+   - `splitDefects` normalizes comma-separated defect strings
+   - Handles parser errors without aborting the entire import
+
+3. **Created repository tests** in [internal/repository/repository_test.go](internal/repository/repository_test.go):
+   - `TestUpsertCar_InsertNew` — inserts new car, verifies fields
+   - `TestUpsertCar_UpdateExisting` — updates existing car
+   - `TestUpsertCar_SameVINTwice_NoDuplicate` — verifies no duplicate VINs
+   - `TestUpsertCar_UpdateMileagePriceDefects` — tests field updates
+   - `TestCreateAndFinishImportRun` — tests import run lifecycle
+
+4. **Created importer tests** in [internal/importer/importer_test.go](internal/importer/importer_test.go):
+   - `TestImport_NewCars` — imports 2 new cars
+   - `TestImport_UpdateExistingVIN` — imports same VIN twice
+   - `TestImport_SameVINTwice_NoDuplicate` — same VIN in same import
+   - `TestImport_WithInvalidRows` — mixed valid/invalid rows
+   - `TestImport_EmptyFile` — empty CSV handling
+   - `TestImport_DefectsNormalization` — defect splitting
+
+### Validation Performed
+- `gofmt -l internal/ cmd/ scripts/` — clean
+- `go test ./...` — all tests pass:
+  - `ok awesomeProject5/internal/importer 0.014s`
+  - `ok awesomeProject5/internal/parser 0.009s`
+  - `ok awesomeProject5/internal/repository 0.008s`
+- `docker compose down -v && docker compose build --no-cache && docker compose up -d` — container starts successfully
+
+### Status
+- ✅ Import service implemented and tested
+- ✅ VIN-based upsert working correctly
+- ✅ Duplicate VIN prevention verified
+- ✅ Import statistics implemented
+- ✅ Import service independent from HTTP handlers
+- ✅ All tests pass
+
+---
+
+## Task 004 — 1C Automobile Export Dataset and Parser
+
+**Date:** 2026-09-10 (Asia/Almaty)
+**Mode:** 💻 Code
+**Basis:** [AI_RESPONSES/001_architecture.md](../001_architecture.md), [AI_RESPONSES/002_project_structure.md](../002_project_structure.md)
+**Output:** [AI_RESPONSES/003_parser_dataset.md](../003_parser_dataset.md)
+
+### Request
+Implement the 1C-like automobile export dataset and parser:
+1. Create a realistic CSV dataset with 1000+ automobile records
+2. Include realistic fields (VIN, brand, model, year, mileage, price, color, status, defects, updated_at)
+3. Use semicolon as CSV delimiter
+4. Create a reusable deterministic dataset generator
+5. Add intentionally problematic records for validation testing
+6. Implement the CSV parser as an independent component
+7. Add unit tests for the parser
+8. Do not implement HTTP handlers or database persistence yet
+
+### Actions Taken
+1. **Updated domain model** — Added `Status` and `UpdatedAt` fields to `CarRecord` in [internal/domain/car.go](internal/domain/car.go).
+
+2. **Implemented CSV parser** — [internal/parser/parser.go](internal/parser/parser.go):
+   - Pure function: `Parse(data []byte) ([]domain.CarRecord, []domain.RowErrorInfo, error)`
+   - Semicolon delimiter, header-based column mapping, whitespace trimming
+   - VIN validation (17 chars, no I/O/Q)
+   - Safe numeric parsing with `strconv.Atoi` (handles spaces, returns nil on failure)
+   - Year range validation (1900–2100), non-negative mileage validation
+   - Row-level error reporting with row numbers
+   - Resilient: continues processing valid rows when another row is invalid
+   - Default currency (KZT), case-insensitive status mapping
+
+3. **Created deterministic dataset generator** — [cmd/gen-dataset/main.go](cmd/gen-dataset/main.go):
+   - Seed=42 for reproducible output
+   - 20 brands, 6 models per brand, realistic Russian-language data
+   - 1000 valid records + 6 problematic records at rows 5, 50, 100, 200, 500, 750
+
+4. **Generated dataset** — [data/imports/partner_1c_export.csv](data/imports/partner_1c_export.csv):
+   - 1001 lines (1 header + 1000 data rows)
+   - Semicolon-delimited, UTF-8, CRLF line endings
+
+5. **Created unit tests** — [internal/parser/parser_test.go](internal/parser/parser_test.go):
+   - 13 test functions covering valid parsing, missing/invalid VIN, invalid mileage/year, missing required fields, malformed columns, mixed valid/invalid rows, empty files, whitespace trimming, default currency, status mapping, negative mileage, row number tracking, and large file (1000 rows)
+
+6. **Fixed Docker runtime issue**:
+   - Diagnosed SQLite error 14 (SQLITE_CANTOPEN) caused by `/data` directory owned by root while container runs as non-root `app` user
+   - Fixed by changing DB path to `/app/data`, creating directories with proper ownership in Dockerfile, updating volume mount and environment variables
+
+### Validation Performed
+- `gofmt -l internal/ cmd/ scripts/` — clean (no output)
+- `go test ./...` — all tests pass (`ok awesomeProject5/internal/parser 0.003s`)
+- `docker compose down -v && docker compose build --no-cache && docker compose up -d` — container starts successfully, logs show `listening on :8080`
+
+### Status
+- ✅ Parser implementation complete and tested
+- ✅ Dataset generated with 1000 records + 6 problematic rows
+- ✅ Docker runtime issue resolved
+- ✅ All tests pass
+- ✅ Code formatted with gofmt
+- ✅ Documentation written to AI_RESPONSES/003_parser_dataset.md

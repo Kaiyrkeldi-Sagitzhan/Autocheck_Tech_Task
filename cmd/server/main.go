@@ -14,6 +14,8 @@ import (
 	"awesomeProject5/internal/api"
 	"awesomeProject5/internal/config"
 	"awesomeProject5/internal/database"
+	"awesomeProject5/internal/importer"
+	"awesomeProject5/internal/repository"
 )
 
 func main() {
@@ -32,7 +34,9 @@ func main() {
 		log.Fatalf("migrations: %v", err)
 	}
 
-	router := api.NewRouter()
+	repo := repository.New(db)
+	imp := importer.New(repo)
+	router := api.NewRouter(repo, imp)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,

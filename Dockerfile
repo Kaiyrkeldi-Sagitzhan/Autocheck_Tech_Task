@@ -20,16 +20,17 @@ RUN CGO_ENABLED=0 go build -o /bin/server ./cmd/server
 # --- Stage 3: runtime ---
 FROM alpine:3.20
 RUN adduser -D app
+RUN mkdir -p /app/data/imports && chown -R app:app /app/data
 USER app
 WORKDIR /app
 COPY --from=backend /bin/server /app/server
 COPY migrations/ /app/migrations/
 
 ENV HTTP_PORT=8080 \
-    DB_PATH=/data/autocheck.db \
-    IMPORT_DIR=/data/imports \
+    DB_PATH=/app/data/autocheck.db \
+    IMPORT_DIR=/app/data/imports \
     IMPORT_INTERVAL=300s
 
 EXPOSE 8080
-VOLUME ["/data"]
+VOLUME ["/app/data"]
 ENTRYPOINT ["/app/server"]
